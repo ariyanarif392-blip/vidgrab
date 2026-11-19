@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage, dialog, clipboard } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const { spawn, execFile } = require('child_process');
 const http = require('http');
@@ -359,6 +359,10 @@ function startServer() {
     if (req.headers['x-vidgrab'] !== '1') return json(403, { ok: false });
 
     if (req.method === 'GET' && req.url === '/ping') return json(200, { ok: true, app: 'VidGrab' });
+    if (req.url === '/hello' && (req.method === 'GET' || req.method === 'POST')) {
+      if (origin) markExtension(); // only a real extension sends an Origin header
+      return json(200, { ok: true, app: 'VidGrab' });
+    }
 
     if (req.method === 'POST' && req.url === '/add') {
       let body = '';
@@ -368,6 +372,7 @@ function startServer() {
           const { url, title } = JSON.parse(body);
           const u = new URL(url);
           if (!/^https?:$/.test(u.protocol)) throw new Error('bad protocol');
+          if (origin) markExtension();
           addJob(u.href, String(title || '').slice(0, 200));
           json(200, { ok: true });
         } catch {
@@ -434,6 +439,62 @@ function createTray() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Browser extension: find browsers, install the extension, connection */
+/* ------------------------------------------------------------------ */
+const EXT_ALIVE_MS = 100 * 1000; // extension pings every 30 s
+let extSeen = 0;
+const extConnected = () => Date.now() - extSeen < EXT_ALIVE_MS;
+function markExtension() {
+  const was = extConnected();
+  extSeen = Date.now();
+  if (!was) send('ext:status', { connected: true });
+}
+setInterval(() => { if (extSeen && !extConnected()) send('ext:status', { connected: false }); }, 15000);
+
+const BROWSERS = [
+  { id: 'chrome', name: 'Google Chrome', exe: ['Google', 'Chrome', 'Application', 'chrome.exe'], page: 'chrome://extensions' },
+  { id: 'edge', name: 'Microsoft Edge', exe: ['Microsoft', 'Edge', 'Application', 'msedge.exe'], page: 'edge://extensions' },
+  { id: 'brave', name: 'Brave', exe: ['BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'], page: 'brave://extensions' },
+];
+function findBrowsers() {
+  const roots = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.LOCALAPPDATA].filter(Boolean);
+  const found = [];
+  for (const b of BROWSERS) {
+    for (const r of roots) {
+      const exe = path.join(r, ...b.exe);
+      if (fs.existsSync(exe)) { found.push({ ...b, path: exe }); break; }
+    }
+  }
+  return found;
+}
+const extSource = () => (app.isPackaged ? path.join(process.resourcesPath, 'extension') : path.join(__dirname, 'extension'));
+const extTarget = () => path.join(app.getPath('appData'), 'vidgrab', 'extension');
+
+function setupBrowser(id) {
+  const b = findBrowsers().find((x) => x.id === id);
+  if (!b) return { ok: false, error: 'Browser not found.' };
+  const src = extSource();
+  const dst = extTarget();
+  try {
+    if (!fs.existsSync(path.join(src, 'manifest.json'))) throw new Error('Extension files are missing from the app.');
+    try { fs.rmSync(dst, { recursive: true, force: true }); } catch {} // drop files from older versions
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.cpSync(src, dst, { recursive: true, force: true });
+  } catch (e) {
+    return { ok: false, error: 'Could not copy the extension: ' + (e && e.message || e) };
+  }
+  clipboard.writeText(dst);
+  try {
+    const child = spawn(b.path, [b.page], { detached: true, stdio: 'ignore', windowsHide: false });
+    child.on('error', () => {});
+    child.unref();
+  } catch {
+    return { ok: false, error: 'Copied, but could not open ' + b.name + '.', path: dst };
+  }
+  return { ok: true, path: dst, name: b.name };
+}
+
+/* ------------------------------------------------------------------ */
 /* Auto-update from GitHub Releases                                    */
 /* ------------------------------------------------------------------ */
 function updateStatus(s) { send('update:status', s); }
@@ -458,6 +519,9 @@ function setupUpdater() {
 /* ------------------------------------------------------------------ */
 function setupIpc() {
   ipcMain.handle('jobs:list', () => [...jobs.values()]);
+  ipcMain.handle('browser:list', () => findBrowsers().map(({ id, name }) => ({ id, name })));
+  ipcMain.handle('browser:setup', (_e, id) => setupBrowser(String(id)));
+  ipcMain.handle('browser:status', () => ({ connected: extConnected() }));
   ipcMain.handle('jobs:add', (_e, url) => {
     try {
       const u = new URL(String(url).trim());

@@ -23,6 +23,8 @@
       <h1>VidGrab</h1>
     </div>
     <div class="top-actions">
+      <span id="extPill" class="pill off" title="Browser extension status">Not connected</span>
+      <button id="btnBrowser" class="ghost" title="Install the button in your browser">Browser</button>
       <button id="btnUpdate" class="ghost" title="Check for app updates">Updates<span id="updDot" class="dot" hidden></span></button>
       <button id="btnSettings" class="ghost">Settings</button>
     </div>
@@ -105,6 +107,22 @@
         <button value="cancel" class="ghost" formnovalidate>Close</button>
         <button value="save" id="setSave" class="primary">Save</button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="browserDlg">
+    <form method="dialog">
+      <h2>Browser button</h2>
+      <p class="muted">Pick your browser. VidGrab copies the extension, copies its folder path to the clipboard and opens the extensions page.</p>
+      <div id="browserList" class="blist"></div>
+      <p id="browserNone" class="muted" hidden>No Chrome, Edge or Brave found on this PC.</p>
+      <ol id="browserSteps" class="steps" hidden>
+        <li>Turn on <b>Developer mode</b> (top right of the extensions page).</li>
+        <li>Click <b>Load unpacked</b>.</li>
+        <li>Paste the path with <b>Ctrl+V</b> in the folder box and choose the folder.</li>
+      </ol>
+      <p id="browserMsg" class="muted small-text"></p>
+      <div class="row end"><button value="cancel" class="ghost" formnovalidate>Close</button></div>
     </form>
   </dialog>
 

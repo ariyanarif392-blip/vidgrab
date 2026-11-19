@@ -40,8 +40,17 @@
       {
         "provider": "github",
         "owner": "ariyanarif392-blip",
-        "repo": "vidgrab", "repo": "vidgrab",
-"releaseType": "release"
+        "repo": "vidgrab",
+        "releaseType": "release"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "extension",
+        "to": "extension",
+        "filter": [
+          "**/*"
+        ]
       }
     ]
   }

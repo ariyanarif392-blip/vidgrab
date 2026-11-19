@@ -256,9 +256,49 @@ $('#btnUpdate').addEventListener('click', () => {
   window.api.checkUpdate();
 });
 
+/* ---------- browser extension ---------- */
+function setExt(connected) {
+  const p = $('#extPill');
+  p.textContent = connected ? 'Connected' : 'Not connected';
+  p.classList.toggle('on', !!connected);
+  p.classList.toggle('off', !connected);
+}
+window.api.on('ext:status', (s) => setExt(s.connected));
+const browserDlg = $('#browserDlg');
+$('#btnBrowser').addEventListener('click', async () => {
+  $('#browserMsg').textContent = '';
+  $('#browserSteps').hidden = true;
+  const list = await window.api.browsers();
+  const box = $('#browserList');
+  box.textContent = '';
+  $('#browserNone').hidden = list.length > 0;
+  for (const b of list) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ghost';
+    btn.textContent = b.name;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      $('#browserMsg').textContent = 'Working...';
+      const r = await window.api.setupBrowser(b.id);
+      btn.disabled = false;
+      if (r.ok) {
+        $('#browserSteps').hidden = false;
+        $('#browserMsg').textContent = `Folder copied to ${r.path} and the path is on your clipboard. ${r.name} opened its extensions page.`;
+      } else {
+        $('#browserMsg').textContent = r.error || 'Failed.';
+      }
+    });
+    box.appendChild(btn);
+  }
+  browserDlg.showModal();
+});
+setInterval(async () => { try { setExt((await window.api.extStatus()).connected); } catch {} }, 5000);
+
 /* ---------- boot ---------- */
 (async () => {
   const all = await window.api.jobs();
   all.sort((a, b) => a.created - b.created).forEach(upsert);
   refreshTools();
+  try { setExt((await window.api.extStatus()).connected); } catch {}
 })();

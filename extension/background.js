@@ -14,6 +14,16 @@ async function sendToApp(url, title) {
   }
 }
 
+// Heartbeat: lets the app show "Connected"
+async function hello() {
+  try { await fetch(`${APP}/hello`, { headers: { 'X-VidGrab': '1' } }); } catch {}
+}
+hello();
+chrome.runtime.onInstalled.addListener(() => { hello(); });
+chrome.runtime.onStartup.addListener(() => { hello(); });
+chrome.alarms.create('vidgrab-hello', { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'vidgrab-hello') hello(); });
+
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg && msg.type === 'add') {
     sendToApp(msg.url, msg.title).then(reply);

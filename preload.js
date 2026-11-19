@@ -2,7 +2,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const inv = (channel, ...args) => ipcRenderer.invoke(channel, ...args);
-const EVENTS = new Set(['job:update', 'job:remove', 'job:focus', 'update:status']);
+const EVENTS = new Set(['job:update', 'job:remove', 'job:focus', 'update:status', 'ext:status']);
 
 contextBridge.exposeInMainWorld('api', {
   jobs: () => inv('jobs:list'),
@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld('api', {
   getSettings: () => inv('settings:get'),
   saveSettings: (s) => inv('settings:save', s),
   pickDir: () => inv('settings:pickDir'),
+
+  browsers: () => inv('browser:list'),
+  setupBrowser: (id) => inv('browser:setup', id),
+  extStatus: () => inv('browser:status'),
 
   checkTools: () => inv('tools:check'),
   installTools: () => inv('tools:install'),
