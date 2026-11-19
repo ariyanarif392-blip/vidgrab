@@ -120,12 +120,16 @@ function emit(job, force = false) {
   persistSoon();
 }
 
-function addJob(url, title) {
+// silent = the request came from the browser extension, which shows its own popup,
+// so the app window must stay where it is.
+function addJob(url, title, silent = false) {
   // re-use an unfinished job for the same URL
   for (const j of jobs.values()) {
     if (j.url === url && j.state !== 'done') {
-      showWindow();
-      send('job:focus', j.id);
+      if (!silent) {
+        showWindow();
+        send('job:focus', j.id);
+      }
       return j;
     }
   }
@@ -146,9 +150,9 @@ function addJob(url, title) {
     created: Date.now(),
   };
   jobs.set(job.id, job);
-  showWindow();
+  if (!silent) showWindow();
   emit(job, true);
-  send('job:focus', job.id);
+  if (!silent) send('job:focus', job.id);
   fetchInfo(job);
   return job;
 }
@@ -343,6 +347,50 @@ function removeJob(job, cleanPartial) {
 /* ------------------------------------------------------------------ */
 /* Local server used by the browser extension                          */
 /* ------------------------------------------------------------------ */
+function revealJob(j) {
+  if (j && j.filepath && fs.existsSync(j.filepath)) shell.showItemInFolder(j.filepath);
+  else shell.openPath(settings.downloadDir);
+}
+function openJob(j) {
+  if (j && j.filepath && fs.existsSync(j.filepath)) shell.openPath(j.filepath);
+}
+
+// POST routes: /add and /job/<action>. The extension popup drives a download through these.
+function handlePost(route, data, origin, json) {
+  if (route === '/add') {
+    try {
+      const u = new URL(data.url);
+      if (!/^https?:$/.test(u.protocol)) throw new Error('bad protocol');
+      if (origin) markExtension();
+      const job = addJob(u.href, String(data.title || '').slice(0, 200), true);
+      return json(200, { ok: true, id: job.id });
+    } catch {
+      return json(400, { ok: false, error: 'Bad request' });
+    }
+  }
+
+  const m = route.match(/^\/job\/(start|pause|cancel|remove|quality|reveal|open)$/);
+  if (!m) return json(404, { ok: false });
+  const j = jobs.get(String(data.id || ''));
+  if (!j) return json(404, { ok: false, error: 'Job not found' });
+
+  switch (m[1]) {
+    case 'start': j.retries = 0; startDownload(j); break;
+    case 'pause': pauseJob(j); break;
+    case 'cancel': removeJob(j, true); return json(200, { ok: true });
+    case 'remove': removeJob(j, false); return json(200, { ok: true });
+    case 'quality':
+      if (typeof data.quality === 'string' && (j.qualities || []).includes(data.quality)) {
+        j.quality = data.quality;
+        persistSoon();
+      }
+      break;
+    case 'reveal': revealJob(j); break;
+    case 'open': openJob(j); break;
+  }
+  json(200, { ok: true, job: j });
+}
+
 function startServer() {
   const server = http.createServer((req, res) => {
     const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
@@ -358,26 +406,30 @@ function startServer() {
     if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
     if (req.headers['x-vidgrab'] !== '1') return json(403, { ok: false });
 
-    if (req.method === 'GET' && req.url === '/ping') return json(200, { ok: true, app: 'VidGrab' });
-    if (req.url === '/hello' && (req.method === 'GET' || req.method === 'POST')) {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    const route = url.pathname;
+
+    if (req.method === 'GET' && route === '/ping') return json(200, { ok: true, app: 'VidGrab' });
+    if (route === '/hello' && (req.method === 'GET' || req.method === 'POST')) {
       if (origin) markExtension(); // only a real extension sends an Origin header
       return json(200, { ok: true, app: 'VidGrab' });
     }
 
-    if (req.method === 'POST' && req.url === '/add') {
+    // Live status of one job, polled by the extension popup
+    if (req.method === 'GET' && route === '/job') {
+      if (origin) markExtension();
+      const j = jobs.get(url.searchParams.get('id') || '');
+      return j ? json(200, { ok: true, job: j }) : json(404, { ok: false, error: 'Job not found' });
+    }
+
+    if (req.method === 'POST') {
       let body = '';
       req.on('data', (c) => { body += c; if (body.length > 10000) req.destroy(); });
       req.on('end', () => {
-        try {
-          const { url, title } = JSON.parse(body);
-          const u = new URL(url);
-          if (!/^https?:$/.test(u.protocol)) throw new Error('bad protocol');
-          if (origin) markExtension();
-          addJob(u.href, String(title || '').slice(0, 200));
-          json(200, { ok: true });
-        } catch {
-          json(400, { ok: false, error: 'Bad request' });
-        }
+        let data;
+        try { data = JSON.parse(body || '{}'); } catch { return json(400, { ok: false, error: 'Bad request' }); }
+        if (!data || typeof data !== 'object') return json(400, { ok: false, error: 'Bad request' });
+        handlePost(route, data, origin, json);
       });
       return;
     }
@@ -535,15 +587,8 @@ function setupIpc() {
   ipcMain.handle('job:pause', (_e, id) => { const j = jobs.get(id); if (j) pauseJob(j); });
   ipcMain.handle('job:cancel', (_e, id) => { const j = jobs.get(id); if (j) removeJob(j, true); });
   ipcMain.handle('job:remove', (_e, id) => { const j = jobs.get(id); if (j) removeJob(j, false); });
-  ipcMain.handle('job:reveal', (_e, id) => {
-    const j = jobs.get(id);
-    if (j && j.filepath && fs.existsSync(j.filepath)) shell.showItemInFolder(j.filepath);
-    else shell.openPath(settings.downloadDir);
-  });
-  ipcMain.handle('job:open', (_e, id) => {
-    const j = jobs.get(id);
-    if (j && j.filepath && fs.existsSync(j.filepath)) shell.openPath(j.filepath);
-  });
+  ipcMain.handle('job:reveal', (_e, id) => revealJob(jobs.get(id)));
+  ipcMain.handle('job:open', (_e, id) => openJob(jobs.get(id)));
 
   ipcMain.handle('settings:get', () => settings);
   ipcMain.handle('settings:save', (_e, s) => {

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VidGrab</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="shell">
+    <header class="top">
+      <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#FF6B6B"/>
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" rx="8" fill="url(#g)"/>
+        <path d="M14 6h4v10h4l-6 7-6-7h4z M9 25h14v2H9z" fill="#fff"/>
+      </svg>
+      <h1>VidGrab</h1>
+    </header>
+
+    <main class="card" id="card">
+      <div class="head">
+        <div class="thumb" id="thumb"><small id="dur" hidden></small></div>
+        <div class="meta">
+          <p class="title" id="title">Reading video...</p>
+          <div class="sub"><span class="chip live" id="chip">Reading video</span><span id="sub"></span></div>
+        </div>
+      </div>
+
+      <div class="bar indet" id="indet"><div class="fill"></div></div>
+
+      <div id="prog" hidden>
+        <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="bar"><div class="fill" id="fill"></div></div>
+        <div class="stats">
+          <div class="pct"><span id="pct">0.0</span><small>%</small></div>
+          <div class="stat"><b id="spd">-</b><span>Speed</span></div>
+          <div class="stat"><b id="eta">-</b><span>Time left</span></div>
+          <div class="stat"><b id="size">-</b><span>Downloaded</span></div>
+        </div>
+      </div>
+
+      <div class="err" id="err" hidden></div>
+      <div class="actions" id="actions"></div>
+    </main>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,10 +1,12 @@
 # VidGrab
 
-Personal download manager for Windows. A button appears on videos in your browser, one click sends the link to the app, a popup opens, you press **Start**.
+Personal download manager for Windows. A button appears on videos in your browser, one click opens a popup window in the middle of your browser, you pick the quality, press **Start**, and watch the download there. The app window stays closed.
 
 ```
-Browser button  ->  local app (127.0.0.1:39800)  ->  popup  ->  Start  ->  yt-dlp downloads
+Browser button  ->  popup window in the browser  ->  Start  ->  local app (127.0.0.1:39800)  ->  yt-dlp downloads
 ```
+
+The popup only shows progress and sends your clicks to the app. The download itself keeps running in the app even if you close the popup.
 
 Features: speed / time left / progress bar, parallel connections, Stop and Resume, automatic retry after internet loss (continues from the same byte), quality picker, tray icon, start with Windows, in-app update from GitHub.
 
@@ -30,8 +32,10 @@ winget install -e --id Gyan.FFmpeg
 2. Turn on **Developer mode**
 3. Click **Load unpacked** and choose the `extension` folder
 
-The button now shows when you hover a video on YouTube or Facebook. Clicking it sends the page link to the app.
-You can also click the toolbar icon to send the current tab.
+The button now shows when you hover a video on YouTube or Facebook. Clicking it opens the VidGrab popup window for that video.
+You can also click the toolbar icon to open the popup for the current tab.
+
+After updating VidGrab, use **Browser** in the app again (it copies the new extension files), then press the reload icon on the VidGrab card in `chrome://extensions`.
 
 Browsers only enable an extension after you confirm it yourself; that confirmation is the Load unpacked step above. Firefox needs a small manifest change and is not included yet.
 

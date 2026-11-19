@@ -107,7 +107,8 @@
     if (!found) return say('Could not find the link for this video. Open it on its own page and try again.', false);
     chrome.runtime.sendMessage({ type: 'add', url: found.url, title: found.title }, (res) => {
       if (chrome.runtime.lastError) return say('Extension was reloaded. Refresh this page.', false);
-      say(res && res.ok ? 'Sent to VidGrab. Press Start in the app.' : (res && res.error) || 'VidGrab is not running.', !!(res && res.ok));
+      if (res && res.ok) return; // the VidGrab popup window opens on its own
+      say((res && res.error) || 'VidGrab is not running.', false);
     });
   }, true);
 })();
