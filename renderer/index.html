@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src https: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VidGrab</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#8B5CF6"/><stop offset="1" stop-color="#FF6B6B"/>
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" rx="8" fill="url(#g)"/>
+        <path d="M14 6h4v10h4l-6 7-6-7h4z M9 25h14v2H9z" fill="#fff"/>
+      </svg>
+      <h1>VidGrab</h1>
+    </div>
+    <div class="top-actions">
+      <button id="btnUpdate" class="ghost" title="Check for app updates">Updates<span id="updDot" class="dot" hidden></span></button>
+      <button id="btnSettings" class="ghost">Settings</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden>
+    <span id="bannerText"></span>
+    <button id="bannerBtn" class="primary small">Install tools</button>
+  </div>
+
+  <form id="addForm" class="add">
+    <input id="addInput" type="text" spellcheck="false" placeholder="Paste a link here, or use the button on the video">
+    <button class="primary" type="submit">Add</button>
+  </form>
+
+  <main id="list" class="list"></main>
+
+  <section id="empty" class="empty">
+    <h2>Nothing downloading</h2>
+    <p>Open a YouTube or Facebook video, hover over the player and click the VidGrab button. The video appears here and waits for your Start.</p>
+  </section>
+
+  <dialog id="settings">
+    <form method="dialog" id="setForm">
+      <h2>Settings</h2>
+
+      <label class="field">
+        <span>Download folder</span>
+        <div class="row">
+          <input id="setDir" type="text" readonly>
+          <button type="button" id="setPick" class="ghost">Change</button>
+        </div>
+      </label>
+
+      <label class="field">
+        <span>Speed boost (parallel connections)</span>
+        <div class="row">
+          <input id="setThreads" type="range" min="1" max="16" step="1">
+          <output id="setThreadsOut">8</output>
+        </div>
+      </label>
+
+      <label class="field">
+        <span>Use login cookies from (private Facebook videos)</span>
+        <select id="setCookies">
+          <option value="">None</option>
+          <option value="chrome">Chrome</option>
+          <option value="edge">Edge</option>
+          <option value="brave">Brave</option>
+          <option value="firefox">Firefox</option>
+        </select>
+      </label>
+
+      <label class="check">
+        <input id="setAuto" type="checkbox">
+        <span>Start VidGrab with Windows (runs in the tray)</span>
+      </label>
+
+      <div class="group">
+        <h3>Download tools</h3>
+        <p id="toolsInfo" class="muted">Checking...</p>
+        <div class="row">
+          <button type="button" id="toolsInstall" class="ghost">Install tools</button>
+          <button type="button" id="toolsUpdate" class="ghost">Update yt-dlp</button>
+        </div>
+        <p id="toolsLog" class="muted small-text"></p>
+      </div>
+
+      <div class="group">
+        <h3>VidGrab <span id="appVer" class="muted"></span></h3>
+        <p id="updInfo" class="muted">Updates come from your GitHub releases.</p>
+        <div class="row">
+          <button type="button" id="updCheck" class="ghost">Check for update</button>
+          <button type="button" id="updGet" class="primary small" hidden>Update now</button>
+          <button type="button" id="updInstall" class="primary small" hidden>Restart and install</button>
+        </div>
+      </div>
+
+      <div class="row end">
+        <button value="cancel" class="ghost" formnovalidate>Close</button>
+        <button value="save" id="setSave" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

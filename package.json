@@ -1,0 +1,47 @@
+{
+  "name": "vidgrab",
+  "version": "1.0.0",
+  "description": "Personal one-click video download manager (browser button + yt-dlp engine)",
+  "main": "main.js",
+  "author": "YOUR_NAME",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never",
+    "release": "electron-builder --win --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.personal.vidgrab",
+    "productName": "VidGrab",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ariyanarif392-blip",
+        "repo": "vidgrab"
+      }
+    ]
+  }
+}

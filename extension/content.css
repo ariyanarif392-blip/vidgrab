@@ -1,0 +1,33 @@
+.vidgrab-btn {
+  position: fixed;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 8px 11px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #8b5cf6, #ff6b6b);
+  color: #fff;
+  font: 600 13px/1 "Segoe UI", system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(20, 17, 43, .55);
+}
+.vidgrab-btn:hover { filter: brightness(1.12); }
+.vidgrab-btn:active { transform: translateY(1px); }
+
+.vidgrab-toast {
+  position: fixed;
+  z-index: 2147483647;
+  right: 20px;
+  bottom: 24px;
+  max-width: 320px;
+  padding: 11px 16px;
+  border-radius: 12px;
+  background: #1e1a3f;
+  color: #f3f1ff;
+  border-left: 4px solid #34d399;
+  font: 500 13px/1.4 "Segoe UI", system-ui, sans-serif;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .45);
+}
+.vidgrab-toast[data-ok="0"] { border-left-color: #fb7185; }
