@@ -60,6 +60,8 @@ git push --follow-tags
 3. GitHub Actions (`.github/workflows/release.yml`) builds the installer and publishes a release.
 4. In the app: **Updates** (or Settings, Check for update), then **Download update**, then **Restart and install**.
 
+The app reads the GitHub repo from `package.json`, so **Check for update** also works in a build that was not made by the installer (for example `dist/win-unpacked`). For daily use, install `VidGrab-Setup-x.y.z.exe` from the GitHub release once; after that, updates come from inside the app.
+
 The installer is unsigned, so Windows SmartScreen may warn on first install. That is normal for personal builds.
 
 yt-dlp is updated separately with **Settings, Update yt-dlp**. Do this whenever a download starts failing, because sites change often.

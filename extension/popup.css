@@ -14,6 +14,7 @@
   --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body {
   background: radial-gradient(520px 260px at 100% -10%, rgba(139, 92, 246, .28), transparent 60%), var(--bg);

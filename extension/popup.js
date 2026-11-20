@@ -100,7 +100,7 @@ function render(j) {
   const chip = $('#chip');
   chip.textContent = label;
   chip.className = `chip ${tone}`;
-  const phase = j.phase && ['downloading', 'merging', 'waiting'].includes(j.state) ? j.phase : '';
+  const phase = j.phase && j.phase !== label && ['downloading', 'merging', 'waiting'].includes(j.state) ? j.phase : '';
   $('#sub').textContent = phase || j.uploader || '';
 
   $('#indet').hidden = j.state !== 'fetching';

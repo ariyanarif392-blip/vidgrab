@@ -552,7 +552,20 @@ function setupBrowser(id) {
 function updateStatus(s) { send('update:status', s); }
 
 let installAfterDownload = false;
+function installNow() {
+  quitting = true;
+  autoUpdater.quitAndInstall(true, true); // silent install, then start the app again
+}
 function setupUpdater() {
+  // Builds that were not made by the installer (for example dist/win-unpacked) have no
+  // resources/app-update.yml, and electron-updater then fails with ENOENT. Give it the
+  // GitHub repo from package.json directly so update checks work in every build.
+  try {
+    const pub = [].concat((require('./package.json').build || {}).publish || [])[0];
+    if (pub && pub.provider === 'github') {
+      autoUpdater.setFeedURL({ provider: 'github', owner: pub.owner, repo: pub.repo, releaseType: pub.releaseType || 'release' });
+    }
+  } catch {}
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.on('checking-for-update', () => updateStatus({ state: 'checking' }));
@@ -561,7 +574,7 @@ function setupUpdater() {
   autoUpdater.on('download-progress', (p) => updateStatus({ state: 'downloading', percent: p.percent }));
   autoUpdater.on('update-downloaded', (i) => {
     updateStatus({ state: 'ready', version: i.version });
-    if (installAfterDownload) { quitting = true; autoUpdater.quitAndInstall(); } // one tap: download, then restart
+    if (installAfterDownload) installNow(); // one tap: download, then restart
   });
   autoUpdater.on('error', (e) => updateStatus({ state: 'error', message: String(e && e.message || e).split('\n')[0] }));
 }
@@ -631,7 +644,7 @@ function setupIpc() {
     try { await autoUpdater.checkForUpdates(); } catch (e) { updateStatus({ state: 'error', message: String(e.message).split('\n')[0] }); }
   });
   ipcMain.handle('update:download', () => { installAfterDownload = true; return autoUpdater.downloadUpdate().catch(() => {}); });
-  ipcMain.handle('update:install', () => { quitting = true; autoUpdater.quitAndInstall(); });
+  ipcMain.handle('update:install', () => installNow());
 }
 
 function applyAutostart() {

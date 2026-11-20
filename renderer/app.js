@@ -40,7 +40,7 @@ function cardHTML(j) {
   const dur = j.duration ? `<small>${clock(j.duration)}</small>` : '';
   const thumb = j.thumbnail ? `style="background-image:url('${esc(j.thumbnail)}')"` : '';
   const who = j.uploader ? ` ${esc(j.uploader)}` : '';
-  const phase = j.phase && ['downloading', 'merging', 'waiting'].includes(j.state) ? j.phase : '';
+  const phase = j.phase && j.phase !== label && ['downloading', 'merging', 'waiting'].includes(j.state) ? j.phase : '';
 
   let body = '';
   const showBar = ['downloading', 'merging', 'waiting', 'paused', 'done'].includes(j.state) || j.percent > 0;

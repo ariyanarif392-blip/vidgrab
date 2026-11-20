@@ -15,6 +15,8 @@
   --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
+/* Without this, rules like .banner { display: flex } beat the hidden attribute and the element never hides */
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body {
   background: radial-gradient(900px 400px at 100% -10%, rgba(139, 92, 246, .22), transparent 60%), var(--bg);
