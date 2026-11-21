@@ -101,9 +101,10 @@ function render(j) {
   chip.textContent = label;
   chip.className = `chip ${tone}`;
   const phase = j.phase && j.phase !== label && ['downloading', 'merging', 'waiting'].includes(j.state) ? j.phase : '';
-  $('#sub').textContent = phase || j.uploader || '';
+  $('#sub').textContent = phase || (j.loading ? 'Loading details...' : j.uploader) || '';
 
-  $('#indet').hidden = j.state !== 'fetching';
+  // thin moving bar while the details are still being read in the background
+  $('#indet').hidden = !(j.state === 'fetching' || (j.state === 'ready' && j.loading));
 
   const showBar = ['downloading', 'merging', 'waiting', 'paused', 'done'].includes(j.state) || j.percent > 0;
   $('#prog').hidden = !showBar;
@@ -121,10 +122,13 @@ function render(j) {
   err.hidden = j.state !== 'error';
   err.textContent = j.state === 'error' ? j.error : '';
 
-  // Rebuild the buttons only when the state changes, so an open quality dropdown is not reset
-  if (j.state !== shown) {
+  // Rebuild the buttons only when the state or the quality list changes, and never while the
+  // quality dropdown is being used, so an open dropdown is not reset under the user's hand
+  const key = `${j.state}|${(j.qualities || []).join(',')}`;
+  const picking = document.activeElement && document.activeElement.tagName === 'SELECT';
+  if (key !== shown && !picking) {
     actions.innerHTML = buildActions(j);
-    shown = j.state;
+    shown = key;
   }
 }
 

@@ -65,7 +65,7 @@ function loadJobs() {
       if (['downloading', 'waiting', 'fetching', 'merging'].includes(j.state)) {
         j.state = j.title ? 'paused' : 'ready';
       }
-      j.speed = 0; j.eta = 0;
+      j.speed = 0; j.eta = 0; j.loading = false;
       jobs.set(j.id, j);
     }
   } catch {}
@@ -81,13 +81,14 @@ function toolEnv() {
   env[key] = (env[key] || '') + path.delimiter + links;
   return env;
 }
-function run(cmd, args, timeout = 0) {
+function run(cmd, args, timeout = 0, onSpawn = null) {
   return new Promise((resolve) => {
-    execFile(
+    const child = execFile(
       cmd, args,
       { env: toolEnv(), windowsHide: true, maxBuffer: 64 * 1024 * 1024, timeout },
       (err, stdout, stderr) => resolve({ err, stdout: String(stdout || ''), stderr: String(stderr || '') })
     );
+    if (onSpawn) onSpawn(child);
   });
 }
 const ytdlp = () => 'yt-dlp';
@@ -120,6 +121,24 @@ function emit(job, force = false) {
   persistSoon();
 }
 
+// What can be known about a link without asking anyone: for YouTube the video id, and from it
+// the thumbnail address. This lets the card show a picture the moment it opens.
+function quickMeta(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^(www|m|music)\./, '');
+    let id = '';
+    if (host === 'youtube.com') {
+      if (u.pathname === '/watch') id = u.searchParams.get('v') || '';
+      else { const m = u.pathname.match(/^\/(?:shorts|embed|live)\/([\w-]{11})/); if (m) id = m[1]; }
+    } else if (host === 'youtu.be') {
+      id = u.pathname.slice(1, 12);
+    }
+    if (/^[\w-]{11}$/.test(id)) return { vid: id, thumbnail: `https://i.ytimg.com/vi/${id}/mqdefault.jpg` };
+  } catch {}
+  return { vid: '', thumbnail: '' };
+}
+
 // silent = the request came from the browser extension, which shows its own popup,
 // so the app window must stay where it is.
 function addJob(url, title, silent = false) {
@@ -133,17 +152,21 @@ function addJob(url, title, silent = false) {
       return j;
     }
   }
+  const quick = quickMeta(url);
+  // The job is "ready" at once, so Start works straight away. The full details (duration,
+  // quality list) are read by yt-dlp in the background and filled in when they arrive.
   const job = {
     id: crypto.randomUUID(),
     url,
     title: title || url,
-    thumbnail: '',
+    thumbnail: quick.thumbnail,
     duration: 0,
     uploader: '',
-    vid: '',
-    qualities: ['best'],
+    vid: quick.vid,
+    qualities: ['best', 'audio'],
     quality: 'best',
-    state: 'fetching',
+    loading: true,
+    state: 'ready',
     phase: '',
     percent: 0, speed: 0, eta: 0, downloaded: 0, total: 0,
     part: 0, retries: 0, filepath: '', error: '',
@@ -157,32 +180,44 @@ function addJob(url, title, silent = false) {
   return job;
 }
 
+const fetchProcs = new Map(); // id -> yt-dlp process that is reading the video details
+
 async function fetchInfo(job) {
-  const args = ['-J', '--no-playlist', '--no-warnings', ...cookieArgs(), '--', job.url];
-  const r = await run(ytdlp(), args, 60000);
+  // skip=translated_subs: the long list of auto-translated captions is not needed here
+  const args = ['-J', '--no-playlist', '--no-warnings', '--extractor-args', 'youtube:skip=translated_subs', ...cookieArgs(), '--', job.url];
+  const r = await run(ytdlp(), args, 60000, (cp) => fetchProcs.set(job.id, cp));
+  fetchProcs.delete(job.id);
+  if (!jobs.has(job.id)) return; // removed while it was being read
+  job.loading = false;
+  // Only change the state if the user has not pressed Start in the meantime
+  const idle = job.state === 'ready';
+
   if (r.err || !r.stdout.trim()) {
-    job.state = 'error';
-    job.error = r.err && r.err.code === 'ENOENT'
-      ? 'yt-dlp was not found. Open Settings and choose Install tools.'
-      : lastLine(r.stderr) || 'Could not read this video.';
+    if (idle) {
+      job.state = 'error';
+      job.error = r.err && r.err.code === 'ENOENT'
+        ? 'yt-dlp was not found. Open Settings and choose Install tools.'
+        : lastLine(r.stderr) || 'Could not read this video.';
+    }
     return emit(job, true);
   }
   try {
     const info = JSON.parse(r.stdout);
     job.title = info.title || job.title;
-    job.thumbnail = info.thumbnail || '';
+    job.thumbnail = info.thumbnail || job.thumbnail;
     job.duration = info.duration || 0;
     job.uploader = info.uploader || info.channel || '';
-    job.vid = info.id || '';
+    job.vid = info.id || job.vid;
     const heights = new Set();
     for (const f of info.formats || []) if (f.height && f.vcodec !== 'none') heights.add(f.height);
     const ladder = [2160, 1440, 1080, 720, 480, 360].filter((h) => [...heights].some((x) => x >= h));
     job.qualities = ['best', ...ladder.map(String), 'audio'];
-    job.quality = 'best';
-    job.state = 'ready';
+    if (idle && !job.qualities.includes(job.quality)) job.quality = 'best';
   } catch {
-    job.state = 'error';
-    job.error = 'Could not read video details.';
+    if (idle) {
+      job.state = 'error';
+      job.error = 'Could not read video details.';
+    }
   }
   emit(job, true);
 }
@@ -328,6 +363,7 @@ function removeJob(job, cleanPartial) {
   clearTimeout(timers.get(job.id));
   const p = procs.get(job.id);
   if (p) { job.stop = 'cancel'; killTree(p); }
+  killTree(fetchProcs.get(job.id)); // stop reading the details too
   jobs.delete(job.id);
   send('job:remove', job.id);
   persistSoon();

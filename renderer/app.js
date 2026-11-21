@@ -39,7 +39,7 @@ function cardHTML(j) {
   const [label, tone] = STATE[j.state] || ['', ''];
   const dur = j.duration ? `<small>${clock(j.duration)}</small>` : '';
   const thumb = j.thumbnail ? `style="background-image:url('${esc(j.thumbnail)}')"` : '';
-  const who = j.uploader ? ` ${esc(j.uploader)}` : '';
+  const who = j.loading && j.state === 'ready' ? ' Loading details...' : j.uploader ? ` ${esc(j.uploader)}` : '';
   const phase = j.phase && j.phase !== label && ['downloading', 'merging', 'waiting'].includes(j.state) ? j.phase : '';
 
   let body = '';
