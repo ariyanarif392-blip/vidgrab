@@ -13,10 +13,7 @@ let win = null;
 let tray = null;
 let quitting = false;
 
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-  process.exit(0);
-}
+const gotLock = app.requestSingleInstanceLock();
 app.on('second-instance', () => showWindow());
 
 /* ------------------------------------------------------------------ */
@@ -393,12 +390,20 @@ function openJob(j) {
 
 // POST routes: /add and /job/<action>. The extension popup drives a download through these.
 function handlePost(route, data, origin, json) {
+  // The extension says hello with its own version, so the app can tell when it is out of date
+  if (route === '/hello') {
+    if (origin) markExtension(String(data.ext || ''));
+    return json(200, { ok: true, app: 'VidGrab', version: app.getVersion() });
+  }
+
   if (route === '/add') {
     try {
       const u = new URL(data.url);
       if (!/^https?:$/.test(u.protocol)) throw new Error('bad protocol');
       if (origin) markExtension();
-      const job = addJob(u.href, String(data.title || '').slice(0, 200), true);
+      // Only an extension that opens its own popup sends popup:true. An older extension does
+      // not, so for it the app window is shown, as before, and the click is never silent.
+      const job = addJob(u.href, String(data.title || '').slice(0, 200), data.popup === true);
       return json(200, { ok: true, id: job.id });
     } catch {
       return json(400, { ok: false, error: 'Bad request' });
@@ -445,10 +450,11 @@ function startServer() {
     const url = new URL(req.url, 'http://127.0.0.1');
     const route = url.pathname;
 
-    if (req.method === 'GET' && route === '/ping') return json(200, { ok: true, app: 'VidGrab' });
-    if (route === '/hello' && (req.method === 'GET' || req.method === 'POST')) {
-      if (origin) markExtension(); // only a real extension sends an Origin header
-      return json(200, { ok: true, app: 'VidGrab' });
+    if (req.method === 'GET' && route === '/ping') return json(200, { ok: true, app: 'VidGrab', version: app.getVersion() });
+    if (route === '/hello' && req.method === 'GET') {
+      // An older extension says hello this way and sends no version: it is out of date
+      if (origin) markExtension(''); // only a real extension sends an Origin header
+      return json(200, { ok: true, app: 'VidGrab', version: app.getVersion() });
     }
 
     // Live status of one job, polled by the extension popup
@@ -531,13 +537,31 @@ function createTray() {
 /* ------------------------------------------------------------------ */
 const EXT_ALIVE_MS = 100 * 1000; // extension pings every 30 s
 let extSeen = 0;
+let extVersion = ''; // version the connected extension reported ('' = unknown, an old one)
 const extConnected = () => Date.now() - extSeen < EXT_ALIVE_MS;
-function markExtension() {
-  const was = extConnected();
-  extSeen = Date.now();
-  if (!was) send('ext:status', { connected: true });
+
+const bundledExtVersion = () => {
+  try { return JSON.parse(fs.readFileSync(path.join(extSource(), 'manifest.json'), 'utf8')).version || ''; } catch { return ''; }
+};
+function verLess(a, b) {
+  const x = String(a || '').split('.').map((n) => parseInt(n, 10) || 0);
+  const y = String(b || '').split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0);
+  return false;
 }
-setInterval(() => { if (extSeen && !extConnected()) send('ext:status', { connected: false }); }, 15000);
+// connected, but older than the extension that ships with this app
+const extStale = () => { const b = bundledExtVersion(); return !!b && (!extVersion || verLess(extVersion, b)); };
+const extState = () => ({ connected: extConnected(), stale: extConnected() && extStale() });
+
+// version: the extension's version when it is known from this request, otherwise leave it as is
+function markExtension(version) {
+  const was = extConnected();
+  const changed = version !== undefined && version !== extVersion;
+  if (version !== undefined) extVersion = version;
+  extSeen = Date.now();
+  if (!was || changed) send('ext:status', extState());
+}
+setInterval(() => { if (extSeen && !extConnected()) send('ext:status', extState()); }, 15000);
 
 const BROWSERS = [
   { id: 'chrome', name: 'Google Chrome', exe: ['Google', 'Chrome', 'Application', 'chrome.exe'], page: 'chrome://extensions' },
@@ -622,7 +646,7 @@ function setupIpc() {
   ipcMain.handle('jobs:list', () => [...jobs.values()]);
   ipcMain.handle('browser:list', () => findBrowsers().map(({ id, name }) => ({ id, name })));
   ipcMain.handle('browser:setup', (_e, id) => setupBrowser(String(id)));
-  ipcMain.handle('browser:status', () => ({ connected: extConnected() }));
+  ipcMain.handle('browser:status', () => extState());
   ipcMain.handle('jobs:add', (_e, url) => {
     try {
       const u = new URL(String(url).trim());
@@ -689,21 +713,61 @@ function applyAutostart() {
 }
 
 /* ------------------------------------------------------------------ */
-app.whenReady().then(() => {
-  loadSettings();
-  loadJobs();
-  setupIpc();
-  setupUpdater();
-  startServer();
-  createTray();
-  createWindow();
-  applyAutostart();
-  if (!process.argv.includes('--hidden')) showWindow();
-  if (app.isPackaged) {
-    setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 10000);
-    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
-  }
-});
+// Which VidGrab already holds the port? Resolves to its version, '' if it is an older build
+// that does not report one, or null if nothing that looks like VidGrab answers.
+function runningVersion() {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { host: '127.0.0.1', port: PORT, path: '/ping', headers: { 'X-VidGrab': '1' }, timeout: 2500 },
+      (res) => {
+        let body = '';
+        res.on('data', (c) => { body += c; });
+        res.on('end', () => {
+          try { const j = JSON.parse(body); resolve(j && j.app === 'VidGrab' ? String(j.version || '') : null); } catch { resolve(null); }
+        });
+      }
+    );
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+  });
+}
+
+if (!gotLock) {
+  // Another VidGrab is already running (usually hidden in the tray) and has just been told to
+  // show its window. When that one is a different version from this one, it is not obvious why
+  // the old screen appears, so say it. (app.exit, not quit: leaves the running copy's files alone.)
+  app.whenReady().then(async () => {
+    const other = await runningVersion();
+    if (other !== null && other !== app.getVersion()) {
+      await dialog.showMessageBox({
+        type: 'warning',
+        title: 'VidGrab',
+        message: other
+          ? `Another copy of VidGrab (version ${other}) is already running, so this one (version ${app.getVersion()}) did not start.`
+          : `An older copy of VidGrab is already running, so this one (version ${app.getVersion()}) did not start.`,
+        detail: 'Right-click the VidGrab icon in the tray (near the clock), choose Quit, then open VidGrab again.',
+        buttons: ['OK'],
+      });
+    }
+    app.exit(0);
+  });
+} else {
+  app.whenReady().then(() => {
+    loadSettings();
+    loadJobs();
+    setupIpc();
+    setupUpdater();
+    startServer();
+    createTray();
+    createWindow();
+    applyAutostart();
+    if (!process.argv.includes('--hidden')) showWindow();
+    if (app.isPackaged) {
+      setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 10000);
+      setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+    }
+  });
+}
 
 app.on('before-quit', () => {
   quitting = true;

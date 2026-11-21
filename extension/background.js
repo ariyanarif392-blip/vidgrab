@@ -5,10 +5,12 @@ async function sendToApp(url, title) {
     const r = await fetch(`${APP}/add`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-VidGrab': '1' },
-      body: JSON.stringify({ url, title }),
+      // popup:true = "I open my own popup, keep the app window closed"
+      body: JSON.stringify({ url, title, popup: true }),
     });
     const j = await r.json();
-    return { ok: !!j.ok, id: j.id, error: j.error };
+    // An old app answers ok but without a job id: it cannot drive the popup, and it opens its own window
+    return { ok: !!j.ok, id: j.id, old: !!j.ok && !j.id, error: j.error };
   } catch {
     return { ok: false, error: 'VidGrab is not running. Open it from the Start menu or the tray.' };
   }
@@ -39,9 +41,16 @@ async function openPopup(jobId) {
   chrome.windows.create(opts);
 }
 
-// Heartbeat: lets the app show "Connected"
+// Heartbeat: lets the app show "Connected", and tells it which extension version this is
+// (POST with the same headers as /add, so an older app still understands it)
 async function hello() {
-  try { await fetch(`${APP}/hello`, { headers: { 'X-VidGrab': '1' } }); } catch {}
+  try {
+    await fetch(`${APP}/hello`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-VidGrab': '1' },
+      body: JSON.stringify({ ext: chrome.runtime.getManifest().version }),
+    });
+  } catch {}
 }
 hello();
 chrome.runtime.onInstalled.addListener(() => { hello(); });

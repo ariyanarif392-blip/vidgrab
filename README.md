@@ -35,6 +35,8 @@ winget install -e --id Gyan.FFmpeg
 The button now shows when you hover a video on YouTube or Facebook. Clicking it opens the VidGrab popup window for that video.
 You can also click the toolbar icon to open the popup for the current tab.
 
+Only one copy of VidGrab should exist on the PC. An old copy (for example `dist/win-unpacked` from an earlier build) keeps running in the tray, owns the port and shows its old screen. If the app opens instead of the popup, or the top bar says **Update extension**, that is the cause: quit the old one from the tray, delete the old folder, install the latest `VidGrab-Setup` and press **Browser** again. A newer copy that finds an older one running now says so in a message instead of silently doing nothing.
+
 After updating VidGrab, use **Browser** in the app again (it copies the new extension files), then press the reload icon on the VidGrab card in `chrome://extensions`.
 
 Browsers only enable an extension after you confirm it yourself; that confirmation is the Load unpacked step above. Firefox needs a small manifest change and is not included yet.

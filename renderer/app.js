@@ -257,13 +257,17 @@ $('#btnUpdate').addEventListener('click', () => {
 });
 
 /* ---------- browser extension ---------- */
-function setExt(connected) {
+function setExt(s) {
+  const connected = !!(s && s.connected);
+  const stale = connected && !!s.stale;
   const p = $('#extPill');
-  p.textContent = connected ? 'Connected' : 'Not connected';
-  p.classList.toggle('on', !!connected);
+  p.textContent = stale ? 'Update extension' : connected ? 'Connected' : 'Not connected';
+  p.title = stale ? 'The browser extension is out of date. Press Browser to install the new one.' : 'Browser extension status';
+  p.classList.toggle('on', connected && !stale);
+  p.classList.toggle('warn', stale);
   p.classList.toggle('off', !connected);
 }
-window.api.on('ext:status', (s) => setExt(s.connected));
+window.api.on('ext:status', (s) => setExt(s));
 const browserDlg = $('#browserDlg');
 $('#btnBrowser').addEventListener('click', async () => {
   $('#browserMsg').textContent = '';
@@ -293,12 +297,12 @@ $('#btnBrowser').addEventListener('click', async () => {
   }
   browserDlg.showModal();
 });
-setInterval(async () => { try { setExt((await window.api.extStatus()).connected); } catch {} }, 5000);
+setInterval(async () => { try { setExt(await window.api.extStatus()); } catch {} }, 5000);
 
 /* ---------- boot ---------- */
 (async () => {
   const all = await window.api.jobs();
   all.sort((a, b) => a.created - b.created).forEach(upsert);
   refreshTools();
-  try { setExt((await window.api.extStatus()).connected); } catch {}
+  try { setExt(await window.api.extStatus()); } catch {}
 })();
