@@ -71,6 +71,8 @@ yt-dlp is updated separately with **Settings, Update yt-dlp**. Do this whenever 
 ## Notes
 
 - Only the page link is sent from the browser. All downloading is done by yt-dlp.
+- Speed: yt-dlp reads a video only once (a few seconds). The extension starts that read when your pointer rests on a video, and Start then downloads from the saved read instead of asking the site again. If the saved read cannot be used (for example its address expired), the download falls back to the normal way by itself.
+- A link sent from the browser never opens the app window; the popup in the browser is the only thing that appears.
 - The local server accepts requests only from browser extensions and requires a custom header, so ordinary websites cannot talk to it.
 - Facebook feed videos: the link is found on a best-effort basis. If it fails, open the video on its own page and click the button there.
 - Private Facebook videos need login cookies: set the browser in Settings. Close that browser first, since it can lock its cookie file.

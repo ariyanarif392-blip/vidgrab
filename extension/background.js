@@ -58,7 +58,22 @@ chrome.runtime.onStartup.addListener(() => { hello(); });
 chrome.alarms.create('vidgrab-hello', { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'vidgrab-hello') hello(); });
 
+// Early look: the pointer is resting on a video, so the app can start reading it already
+async function prefetchToApp(url) {
+  try {
+    await fetch(`${APP}/prefetch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-VidGrab': '1' },
+      body: JSON.stringify({ url }),
+    });
+  } catch {}
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg && msg.type === 'prefetch' && typeof msg.url === 'string') {
+    prefetchToApp(msg.url);
+    return; // no reply needed
+  }
   if (msg && msg.type === 'add') {
     sendToApp(msg.url, msg.title).then((res) => {
       if (res.ok && res.id) openPopup(res.id);

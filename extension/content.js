@@ -107,6 +107,21 @@
   let found = null;   // its link, worked out while the pointer was on the video
   let hideTimer;
 
+  // When the pointer rests on a video for a moment, tell the app to start reading it. By the time
+  // the button is pressed the answer is usually ready. Each link is announced once per 5 minutes.
+  const announced = new Map(); // url -> time
+  let prefUrl = '';
+  let prefTimer;
+  function schedulePrefetch(url) {
+    clearTimeout(prefTimer);
+    const t = announced.get(url);
+    if (t && Date.now() - t < 5 * 60 * 1000) return;
+    prefTimer = setTimeout(() => {
+      announced.set(url, Date.now());
+      try { chrome.runtime.sendMessage({ type: 'prefetch', url }, () => void chrome.runtime.lastError); } catch {}
+    }, 450);
+  }
+
   function videoAt(x, y) {
     for (const v of document.querySelectorAll('video')) {
       const r = v.getBoundingClientRect();
@@ -142,9 +157,12 @@
         current = v;
         place(v);
         btn.style.display = 'flex';
+        if (found && found.url !== prefUrl) { prefUrl = found.url; schedulePrefetch(found.url); }
       } else if (btn.style.display !== 'none') {
+        // The pointer left the video (not for the button): it was only passing by, no early look
+        clearTimeout(prefTimer); prefUrl = '';
         clearTimeout(hideTimer);
-        hideTimer = setTimeout(() => { btn.style.display = 'none'; current = null; found = null; }, 600);
+        hideTimer = setTimeout(() => { btn.style.display = 'none'; current = null; found = null; prefUrl = ''; clearTimeout(prefTimer); }, 600);
       }
     });
   }, { passive: true });
@@ -154,6 +172,7 @@
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    clearTimeout(prefTimer); // the click itself asks the app to read it
     const link = found || (current && current.isConnected ? resolve(current, null) : null);
     if (!link) return say('Could not find the link for this video. Open it on its own page and try again.', false);
     chrome.runtime.sendMessage({ type: 'add', url: link.url, title: link.title }, (res) => {

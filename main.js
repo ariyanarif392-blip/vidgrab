@@ -177,29 +177,83 @@ function addJob(url, title, silent = false) {
   return job;
 }
 
-const fetchProcs = new Map(); // id -> yt-dlp process that is reading the video details
+/* Reading a video with yt-dlp takes seconds (start-up plus asking the site). It is done once per
+   link, the answer is kept, and the download later starts from that saved answer instead of asking
+   the site again. The same read is shared by the extension's early look (/prefetch) and the job. */
+const INFO_MS = 20 * 60 * 1000; // how long a saved read stays usable; video addresses expire after hours
+const infoCache = new Map(); // key -> { at, promise, res, file }
+const infoKey = (url) => `${settings.cookiesBrowser || ''}|${url}`;
+const infoDir = () => path.join(app.getPath('userData'), 'info');
+let prefetching = 0;
+
+function dropInfo(key) {
+  const e = infoCache.get(key);
+  if (e && e.file) { try { fs.rmSync(e.file, { force: true }); } catch {} }
+  infoCache.delete(key);
+}
+
+function readInfo(url) {
+  const key = infoKey(url);
+  const hit = infoCache.get(key);
+  if (hit && Date.now() - hit.at < INFO_MS) return hit.promise;
+  if (hit) dropInfo(key);
+  const e = { at: Date.now(), res: null, file: '' };
+  e.promise = (async () => {
+    // skip=translated_subs: the long list of auto-translated captions is not needed here
+    const args = ['-J', '--no-playlist', '--no-warnings', '--extractor-args', 'youtube:skip=translated_subs', ...cookieArgs(), '--', url];
+    const r = await run(ytdlp(), args, 60000);
+    let res;
+    if (r.err || !r.stdout.trim()) res = { ok: false, err: r.err, stderr: r.stderr };
+    else {
+      try { res = { ok: true, info: JSON.parse(r.stdout), raw: r.stdout }; } catch { res = { ok: false, bad: true }; }
+    }
+    e.res = res;
+    if (!res.ok && infoCache.get(key) === e) infoCache.delete(key); // a failed read is not kept
+    return res;
+  })();
+  infoCache.set(key, e);
+  while (infoCache.size > 12) dropInfo(infoCache.keys().next().value);
+  return e.promise;
+}
+
+// The saved read as a file yt-dlp can start from (--load-info-json), or null when there is none
+// that can be trusted: not read yet, failed, too old, or already shown not to work for this job.
+function infoFileFor(job) {
+  const key = infoKey(job.url);
+  const e = infoCache.get(key);
+  if (job.noInfo || !e || !e.res || !e.res.ok || Date.now() - e.at > INFO_MS) return null;
+  if (!e.file) {
+    try {
+      fs.mkdirSync(infoDir(), { recursive: true });
+      const f = path.join(infoDir(), crypto.createHash('sha1').update(key).digest('hex').slice(0, 20) + '.json');
+      fs.writeFileSync(f, e.res.raw);
+      e.file = f;
+    } catch { return null; }
+  }
+  return e.file;
+}
 
 async function fetchInfo(job) {
-  // skip=translated_subs: the long list of auto-translated captions is not needed here
-  const args = ['-J', '--no-playlist', '--no-warnings', '--extractor-args', 'youtube:skip=translated_subs', ...cookieArgs(), '--', job.url];
-  const r = await run(ytdlp(), args, 60000, (cp) => fetchProcs.set(job.id, cp));
-  fetchProcs.delete(job.id);
+  const res = await readInfo(job.url);
   if (!jobs.has(job.id)) return; // removed while it was being read
   job.loading = false;
   // Only change the state if the user has not pressed Start in the meantime
   const idle = job.state === 'ready';
 
-  if (r.err || !r.stdout.trim()) {
+  if (!res.ok) {
     if (idle) {
       job.state = 'error';
-      job.error = r.err && r.err.code === 'ENOENT'
+      job.error = res.err && res.err.code === 'ENOENT'
         ? 'yt-dlp was not found. Open Settings and choose Install tools.'
-        : lastLine(r.stderr) || 'Could not read this video.';
+        : res.bad ? 'Could not read video details.' : lastLine(res.stderr) || 'Could not read this video.';
+    } else if (job.wantStart) {
+      job.noInfo = true; // no saved read: the download below finds the video by itself
     }
+    startWaiting(job);
     return emit(job, true);
   }
   try {
-    const info = JSON.parse(r.stdout);
+    const info = res.info;
     job.title = info.title || job.title;
     job.thumbnail = info.thumbnail || job.thumbnail;
     job.duration = info.duration || 0;
@@ -216,14 +270,22 @@ async function fetchInfo(job) {
       job.error = 'Could not read video details.';
     }
   }
+  startWaiting(job);
   emit(job, true);
+}
+
+// Start was pressed while the details were still being read: carry on now
+function startWaiting(job) {
+  if (!job.wantStart) return;
+  job.wantStart = false;
+  if (job.state === 'downloading' && !procs.has(job.id)) launchDownload(job);
 }
 
 function cookieArgs() {
   return settings.cookiesBrowser ? ['--cookies-from-browser', settings.cookiesBrowser] : [];
 }
 
-function buildArgs(job) {
+function buildArgs(job, infoFile) {
   const a = [
     '--no-playlist', '--newline', '--no-warnings', '--windows-filenames',
     '-c', '--retries', 'infinite', '--fragment-retries', 'infinite', '--retry-sleep', '3',
@@ -241,7 +303,9 @@ function buildArgs(job) {
   } else {
     a.push('-f', `bv*[height<=${Number(q)}]+ba/b[height<=${Number(q)}]`, '-S', 'res,ext', '--merge-output-format', 'mp4');
   }
-  a.push('--', job.url); // '--' stops option injection from untrusted URLs
+  // With a saved read yt-dlp starts straight away instead of asking the site again
+  if (infoFile) a.push('--load-info-json', infoFile);
+  else a.push('--', job.url); // '--' stops option injection from untrusted URLs
   return a;
 }
 
@@ -302,7 +366,21 @@ function startDownload(job) {
   job.stop = null;
   emit(job, true);
 
-  const p = spawn(ytdlp(), buildArgs(job), { env: toolEnv(), windowsHide: true });
+  // The details are still being read (a few seconds): start from them the moment they arrive,
+  // which is quicker than asking the site a second time.
+  if (job.loading) {
+    job.wantStart = true;
+    job.phase = 'Getting ready';
+    return emit(job, true);
+  }
+  launchDownload(job);
+}
+
+function launchDownload(job) {
+  job.part = 0;
+  const infoFile = infoFileFor(job);
+  job.fromInfo = !!infoFile;
+  const p = spawn(ytdlp(), buildArgs(job, infoFile), { env: toolEnv(), windowsHide: true });
   procs.set(job.id, p);
   const errTail = [];
   let spawnFailed = false;
@@ -339,6 +417,14 @@ function startDownload(job) {
         job.phase = 'Connection lost, retrying';
         const delay = Math.min(30, 2 + job.retries * 3) * 1000;
         timers.set(job.id, setTimeout(() => { if (job.state === 'waiting') startDownload(job); }, delay));
+      } else if (job.fromInfo) {
+        // The saved read could not be used (the address expired, or yt-dlp refused it).
+        // Do it the normal way, once, and do not use the saved read for this job again.
+        job.noInfo = true;
+        job.stop = null;
+        job.phase = 'Starting';
+        emit(job, true);
+        return launchDownload(job);
       } else {
         job.state = 'error';
         job.error = lastLine(msg) || 'Download failed.';
@@ -351,6 +437,11 @@ function startDownload(job) {
 
 function pauseJob(job) {
   clearTimeout(timers.get(job.id));
+  if (job.wantStart) { // still waiting for the details: nothing is running yet
+    job.wantStart = false;
+    job.state = 'paused'; job.phase = '';
+    return emit(job, true);
+  }
   const p = procs.get(job.id);
   if (p) { job.stop = 'pause'; killTree(p); }
   else if (job.state === 'waiting') { job.state = 'paused'; job.phase = ''; emit(job, true); }
@@ -360,7 +451,7 @@ function removeJob(job, cleanPartial) {
   clearTimeout(timers.get(job.id));
   const p = procs.get(job.id);
   if (p) { job.stop = 'cancel'; killTree(p); }
-  killTree(fetchProcs.get(job.id)); // stop reading the details too
+  job.wantStart = false;
   jobs.delete(job.id);
   send('job:remove', job.id);
   persistSoon();
@@ -396,14 +487,32 @@ function handlePost(route, data, origin, json) {
     return json(200, { ok: true, app: 'VidGrab', version: app.getVersion() });
   }
 
+  // The extension saw the pointer rest on a video: start reading it now, so the answer is
+  // usually ready by the time the Download button is pressed. At most two at once.
+  if (route === '/prefetch') {
+    try {
+      const u = new URL(data.url);
+      if (!/^https?:$/.test(u.protocol)) throw new Error('bad protocol');
+      if (origin) markExtension();
+      const hit = infoCache.get(infoKey(u.href));
+      if (!(hit && Date.now() - hit.at < INFO_MS) && prefetching < 2) {
+        prefetching += 1;
+        readInfo(u.href).finally(() => { prefetching -= 1; });
+      }
+      return json(200, { ok: true });
+    } catch {
+      return json(400, { ok: false, error: 'Bad request' });
+    }
+  }
+
   if (route === '/add') {
     try {
       const u = new URL(data.url);
       if (!/^https?:$/.test(u.protocol)) throw new Error('bad protocol');
       if (origin) markExtension();
-      // Only an extension that opens its own popup sends popup:true. An older extension does
-      // not, so for it the app window is shown, as before, and the click is never silent.
-      const job = addJob(u.href, String(data.title || '').slice(0, 200), data.popup === true);
+      // A link that comes from the browser never opens the app window: the extension shows its own
+      // popup. (Links typed into the app itself go through IPC and do show the window.)
+      const job = addJob(u.href, String(data.title || '').slice(0, 200), true);
       return json(200, { ok: true, id: job.id });
     } catch {
       return json(400, { ok: false, error: 'Bad request' });
@@ -753,6 +862,7 @@ if (!gotLock) {
   });
 } else {
   app.whenReady().then(() => {
+    try { fs.rmSync(infoDir(), { recursive: true, force: true }); } catch {} // saved reads from an earlier run
     loadSettings();
     loadJobs();
     setupIpc();
