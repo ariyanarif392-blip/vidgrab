@@ -72,6 +72,7 @@ yt-dlp is updated separately with **Settings, Update yt-dlp**. Do this whenever 
 
 - Only the page link is sent from the browser. All downloading is done by yt-dlp.
 - Speed: yt-dlp reads a video only once (a few seconds). The extension starts that read when your pointer rests on a video, and Start then downloads from the saved read instead of asking the site again. If the saved read cannot be used (for example its address expired), the download falls back to the normal way by itself.
+- Picture format: **Best** asks for H.264 video and AAC sound in an .mp4, which plays in every player. yt-dlp's own default prefers AV1 and VP9, which give a black picture in players without those codecs (Windows Movies & TV, for example). Above 1080p YouTube only has VP9 and AV1, so 1440p and 2160p are marked "may need VLC". When a finished video still uses AV1, VP9 or H.265 (some videos have no H.264 version), the card says so.
 - A link sent from the browser never opens the app window; the popup in the browser is the only thing that appears.
 - The local server accepts requests only from browser extensions and requires a custom header, so ordinary websites cannot talk to it.
 - Facebook feed videos: the link is found on a best-effort basis. If it fails, open the video on its own page and click the button there.

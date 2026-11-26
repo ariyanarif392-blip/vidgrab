@@ -95,6 +95,7 @@ button { cursor: pointer; border: 0; }
 .actions .grow { flex: 1; }
 .actions select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
 .err { color: var(--bad); font-size: 12.5px; margin-top: 8px; word-break: break-word; }
+.note { color: var(--amber); font-size: 12.5px; margin-top: 8px; word-break: break-word; }
 
 /* settings dialog */
 dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 18px; padding: 20px 22px; width: min(500px, 92vw); max-height: 90vh; overflow-y: auto; }

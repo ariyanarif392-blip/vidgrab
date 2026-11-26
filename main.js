@@ -295,13 +295,21 @@ function buildArgs(job, infoFile) {
     'download:PROG|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s',
     ...cookieArgs(),
   ];
+  // Picture and sound that play in every player (Windows Movies & TV, phones, TVs).
+  // yt-dlp's own order prefers AV1, then VP9, then H.264 for the picture, and Opus before AAC for the
+  // sound. In an .mp4 the first ones give a black picture or no sound in players without those codecs.
+  // So: H.264 first, then the usual order (resolution, frame rate...), AAC for the sound.
+  const COMPAT = 'vcodec:h264,lang,quality,res,fps,hdr:12,acodec:aac';
+  // Above 1080p YouTube only has VP9 and AV1: take the highest resolution, VP9 before AV1
+  const HIGH = 'lang,quality,res,fps,hdr:12,vcodec:vp9,acodec:aac';
   const q = job.quality;
   if (q === 'audio') {
     a.push('-f', 'ba/b', '-x', '--audio-format', 'mp3', '--audio-quality', '0');
   } else if (q === 'best') {
-    a.push('-f', 'bv*+ba/b', '-S', 'res,ext', '--merge-output-format', 'mp4');
+    a.push('-f', 'bv*+ba/b', '-S', COMPAT, '--merge-output-format', 'mp4');
   } else {
-    a.push('-f', `bv*[height<=${Number(q)}]+ba/b[height<=${Number(q)}]`, '-S', 'res,ext', '--merge-output-format', 'mp4');
+    const h = Number(q);
+    a.push('-f', `bv*[height<=${h}]+ba/b[height<=${h}]`, '-S', h > 1080 ? HIGH : COMPAT, '--merge-output-format', 'mp4');
   }
   // With a saved read yt-dlp starts straight away instead of asking the site again
   if (infoFile) a.push('--load-info-json', infoFile);
@@ -362,6 +370,7 @@ function startDownload(job) {
   job.state = 'downloading';
   job.phase = 'Starting';
   job.error = '';
+  job.note = '';
   job.part = 0;
   job.stop = null;
   emit(job, true);
@@ -409,6 +418,7 @@ function launchDownload(job) {
       return; // job already removed
     } else if (code === 0) {
       job.state = 'done'; job.percent = 100; job.phase = '';
+      checkCodec(job);
     } else {
       const msg = errTail.join('\n');
       if (isNetworkError(msg) && job.retries < 80) {
@@ -433,6 +443,19 @@ function launchDownload(job) {
     job.stop = null;
     emit(job, true);
   });
+}
+
+// After a download: say so when the picture uses a codec that many players cannot show (some
+// videos have no H.264 version at all). ffprobe comes with ffmpeg; without it nothing is said.
+async function checkCodec(job) {
+  if (job.quality === 'audio' || !job.filepath) return;
+  const r = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', job.filepath], 20000);
+  if (r.err) return;
+  const name = { av1: 'AV1', vp9: 'VP9', hevc: 'H.265' }[r.stdout.trim().split(/\r?\n/)[0].toLowerCase()];
+  if (name && jobs.has(job.id)) {
+    job.note = `This video uses ${name}. If the picture is black in your player, open it with VLC.`;
+    emit(job, true);
+  }
 }
 
 function pauseJob(job) {

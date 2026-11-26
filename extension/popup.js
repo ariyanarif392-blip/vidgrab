@@ -20,7 +20,7 @@ function clock(sec) {
   const p = (x) => String(x).padStart(2, '0');
   return h ? `${h}:${p(m)}:${p(s)}` : `${m}:${p(s)}`;
 }
-const qLabel = (q) => (q === 'best' ? 'Best quality' : q === 'audio' ? 'Audio only (MP3)' : `${q}p`);
+const qLabel = (q) => (q === 'best' ? 'Best (plays everywhere)' : q === 'audio' ? 'Audio only (MP3)' : Number(q) > 1080 ? `${q}p (may need VLC)` : `${q}p`);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const STATE = {
@@ -121,6 +121,9 @@ function render(j) {
   const err = $('#err');
   err.hidden = j.state !== 'error';
   err.textContent = j.state === 'error' ? j.error : '';
+  const note = $('#note');
+  note.hidden = !(j.state === 'done' && j.note);
+  note.textContent = j.state === 'done' && j.note ? j.note : '';
 
   // Rebuild the buttons only when the state or the quality list changes, and never while the
   // quality dropdown is being used, so an open dropdown is not reset under the user's hand

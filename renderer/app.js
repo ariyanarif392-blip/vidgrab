@@ -21,7 +21,7 @@ function clock(sec) {
   const p = (x) => String(x).padStart(2, '0');
   return h ? `${h}:${p(m)}:${p(s)}` : `${m}:${p(s)}`;
 }
-const qLabel = (q) => (q === 'best' ? 'Best quality' : q === 'audio' ? 'Audio only (MP3)' : `${q}p`);
+const qLabel = (q) => (q === 'best' ? 'Best (plays everywhere)' : q === 'audio' ? 'Audio only (MP3)' : Number(q) > 1080 ? `${q}p (may need VLC)` : `${q}p`);
 
 const STATE = {
   fetching: ['Reading video', 'live'],
@@ -56,6 +56,7 @@ function cardHTML(j) {
       </div>`;
   }
   if (j.state === 'error') body += `<div class="err">${esc(j.error)}</div>`;
+  if (j.state === 'done' && j.note) body += `<div class="note">${esc(j.note)}</div>`;
 
   let actions = '';
   switch (j.state) {
